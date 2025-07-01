@@ -1,6 +1,3 @@
-# Step 1: Create a folder for your project, e.g., `mock-api`
-# Inside it, create this file: app.py
-
 from flask import Flask, request, jsonify, render_template_string
 import sqlite3
 import uuid
@@ -9,16 +6,18 @@ import os
 app = Flask(__name__)
 DB_FILE = 'data.db'
 
-# Step 2: Create the SQLite table on first run
+# Create the SQLite table if it doesn't exist
 if not os.path.exists(DB_FILE):
     with sqlite3.connect(DB_FILE) as conn:
-        conn.execute('''CREATE TABLE IF NOT EXISTS records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            token TEXT,
-            data TEXT
-        )''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT,
+                data TEXT
+            )
+        ''')
 
-# Step 3: Home UI to insert/view data
+# UI to insert and view data
 @app.route("/ui")
 def ui():
     return render_template_string('''
@@ -37,7 +36,7 @@ def ui():
         </form>
     ''')
 
-# Step 4: Insert endpoint (POST from UI or API)
+# Insert data (POST endpoint)
 @app.route("/insert", methods=["POST"])
 def insert():
     data = request.form.get("json") or request.json
@@ -50,7 +49,7 @@ def insert():
         new_id = cur.lastrowid
     return jsonify({"id": new_id})
 
-# Step 5: View by ID
+# View data by ID (GET endpoint)
 @app.route("/<int:record_id>", methods=["GET"])
 def get_by_id(record_id):
     with sqlite3.connect(DB_FILE) as conn:
@@ -60,12 +59,12 @@ def get_by_id(record_id):
         return jsonify({"id": row[0], "token": row[1], "data": row[2]})
     return jsonify({"error": "Not found"}), 404
 
-# Optional: Clean view UI
+# View using /view?id=<id>
 @app.route("/view")
 def view():
     record_id = request.args.get("id")
     return get_by_id(int(record_id)) if record_id and record_id.isdigit() else jsonify({"error": "Invalid ID"})
 
-# Step 6: Run locally
+# Run the app
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)

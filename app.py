@@ -49,17 +49,22 @@ def insert():
         new_id = cur.lastrowid
     return jsonify({"id": new_id})
 
-# View data by ID (GET endpoint)
+# View data by ID (GET endpoint with token check + clean output)
 @app.route("/<int:record_id>", methods=["GET"])
 def get_by_id(record_id):
-    with sqlite3.connect(DB_FILE) as conn:
-        cur = conn.execute("SELECT id, token, data FROM records WHERE id = ?", (record_id,))
-        row = cur.fetchone()
-    if row:
-        return jsonify({"id": row[0], "token": row[1], "data": row[2]})
-    return jsonify({"error": "Not found"}), 404
+    token = request.headers.get("Authorization")
+    if not token:
+        return jsonify({"error": "Missing token"}), 401
 
-# View using /view?id=<id>
+    with sqlite3.connect(DB_FILE) as conn:
+        cur = conn.execute("SELECT token, data FROM records WHERE id = ?", (record_id,))
+        row = cur.fetchone()
+
+    if row and row[0] == token:
+        return jsonify({"data": row[1]})
+    return jsonify({"error": "Not found or invalid token"}), 403
+
+# View using /view?id=<id> (no auth check for UI)
 @app.route("/view")
 def view():
     record_id = request.args.get("id")

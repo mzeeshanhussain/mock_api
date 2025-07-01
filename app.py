@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, render_template_string
 import sqlite3
-import uuid
 import os
 
 app = Flask(__name__)
@@ -32,6 +31,7 @@ def ui():
         <h2>Fetch by ID</h2>
         <form method="get" action="/view">
             ID: <input name="id"><br>
+            Token: <input name="token"><br>
             <button type="submit">View</button>
         </form>
     ''')
@@ -49,7 +49,7 @@ def insert():
         new_id = cur.lastrowid
     return jsonify({"id": new_id})
 
-# View data by ID (GET endpoint with token check + clean output)
+# View data by ID (API-only, token required via header)
 @app.route("/<int:record_id>", methods=["GET"])
 def get_by_id(record_id):
     token = request.headers.get("Authorization")
@@ -64,11 +64,21 @@ def get_by_id(record_id):
         return jsonify({"data": row[1]})
     return jsonify({"error": "Not found or invalid token"}), 403
 
-# View using /view?id=<id> (no auth check for UI)
+# View via UI (token passed as query param instead of header)
 @app.route("/view")
 def view():
     record_id = request.args.get("id")
-    return get_by_id(int(record_id)) if record_id and record_id.isdigit() else jsonify({"error": "Invalid ID"})
+    token = request.args.get("token")
+    if not record_id or not record_id.isdigit():
+        return jsonify({"error": "Invalid ID"})
+
+    with sqlite3.connect(DB_FILE) as conn:
+        cur = conn.execute("SELECT token, data FROM records WHERE id = ?", (int(record_id),))
+        row = cur.fetchone()
+
+    if row and row[0] == token:
+        return jsonify({"data": row[1]})
+    return jsonify({"error": "Not found or invalid token"}), 403
 
 # Run the app
 if __name__ == "__main__":

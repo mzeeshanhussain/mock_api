@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, render_template_string
 import sqlite3
 import os
+import json
 
 app = Flask(__name__)
 DB_FILE = 'data.db'
@@ -31,7 +32,6 @@ def ui():
         <h2>Fetch by ID</h2>
         <form method="get" action="/view">
             ID: <input name="id"><br>
-            Token: <input name="token"><br>
             <button type="submit">View</button>
         </form>
     ''')
@@ -44,12 +44,18 @@ def insert():
     if not data or not token:
         return jsonify({"error": "Missing token or JSON"}), 400
 
+    # Ensure data is valid JSON
+    try:
+        parsed_data = json.loads(data) if isinstance(data, str) else data
+    except Exception as e:
+        return jsonify({"error": "Invalid JSON"}), 400
+
     with sqlite3.connect(DB_FILE) as conn:
-        cur = conn.execute("INSERT INTO records (token, data) VALUES (?, ?)", (token, str(data)))
+        cur = conn.execute("INSERT INTO records (token, data) VALUES (?, ?)", (token, json.dumps(parsed_data)))
         new_id = cur.lastrowid
     return jsonify({"id": new_id})
 
-# View data by ID (API-only, token required via header)
+# View data by ID (API-only, token required via header, returns raw JSON)
 @app.route("/<int:record_id>", methods=["GET"])
 def get_by_id(record_id):
     token = request.headers.get("Authorization")
@@ -61,24 +67,31 @@ def get_by_id(record_id):
         row = cur.fetchone()
 
     if row and row[0] == token:
-        return jsonify({"data": row[1]})
+        return jsonify(json.loads(row[1]))
     return jsonify({"error": "Not found or invalid token"}), 403
 
-# View via UI (token passed as query param instead of header)
+# View via UI (no auth, shows full record: id, token, data)
 @app.route("/view")
 def view():
     record_id = request.args.get("id")
-    token = request.args.get("token")
     if not record_id or not record_id.isdigit():
         return jsonify({"error": "Invalid ID"})
 
     with sqlite3.connect(DB_FILE) as conn:
-        cur = conn.execute("SELECT token, data FROM records WHERE id = ?", (int(record_id),))
+        cur = conn.execute("SELECT id, token, data FROM records WHERE id = ?", (int(record_id),))
         row = cur.fetchone()
 
-    if row and row[0] == token:
-        return jsonify({"data": row[1]})
-    return jsonify({"error": "Not found or invalid token"}), 403
+    if row:
+        try:
+            parsed = json.loads(row[2])
+        except:
+            parsed = row[2]
+        return jsonify({
+            "id": row[0],
+            "token": row[1],
+            "data": parsed
+        })
+    return jsonify({"error": "Not found"}), 404
 
 # Run the app
 if __name__ == "__main__":
